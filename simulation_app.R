@@ -1,9 +1,8 @@
 library(shiny)
 library(stats)
 
-ui <- fluidPage(
+ui <- fluidPage (
   titlePanel("Retirement Solvency Simulator (Early Warning System)"),
-  
   sidebarLayout(
     sidebarPanel(
       h4("Client Parameters"),
@@ -11,7 +10,6 @@ ui <- fluidPage(
       numericInput("needs_0_mo", "Essential Needs (€/month)", value = 1250, step = 50),
       numericInput("wishes_0_mo", "Discretionary Wishes (€/month)", value = 750, step = 50),
       numericInput("life_exp", "Life Expectancy (Years)", value = 20.6, step = 0.1),
-      
       h4("Market & Economic Assumptions"),
       sliderInput("mu_ret", "Expected Return", min = 0, max = 0.10, value = 0.05, step = 0.005),
       sliderInput("sig_ret", "Return Volatility", min = 0, max = 0.20, value = 0.12, step = 0.01),
@@ -19,20 +17,17 @@ ui <- fluidPage(
       sliderInput("pi_wishes", "Wishes Inflation", min = 0, max = 0.10, value = 0.0303, step = 0.001),
       sliderInput("sig_inf", "Inflation Volatility", min = 0, max = 0.05, value = 0.01, step = 0.005)
     ),
-    
-    mainPanel(
+    mainPanel (
       fluidRow(
         column(12, plotOutput("trajectoryPlot", height = "400px"))
       ),
       hr(),
-      
       fluidRow(
         column(12, verbatimTextOutput("advisoryText"))
       ),
       hr(),
-      
       fluidRow(
-        column(12, align = "center", plotOutput("dialPlot", height = "300px"))
+        column(12, align="center", plotOutput("dialPlot", height = "300px"))
       )
     )
   )
@@ -42,10 +37,9 @@ server <- function(input, output) {
   
   sim_results <- reactive({
     set.seed(2026)
-    N <- 2000 
+    N <- 2000
     horizon <- 35
     rf_rate <- 0.02
-    
     needs_0_ann <- input$needs_0_mo * 12
     wishes_0_ann <- input$wishes_0_mo * 12
     
@@ -63,7 +57,6 @@ server <- function(input, output) {
       for (t in 1:horizon) {
         curr_n <- curr_n * (1 + Inf_n_mat[, t])
         curr_w <- curr_w * (1 + Inf_w_mat[, t])
-        
         growth <- ifelse(paths[, t] > 0, paths[, t] * R_mat[, t], 0)
         paths[, t + 1] <- paths[, t] + growth - (curr_n + curr_w)
       }
@@ -71,16 +64,16 @@ server <- function(input, output) {
       if (return_paths) {
         ruin_indices <- apply(paths, 1, function(p) {
           idx <- which(p <= 0)
-          if (length(idx) == 0) return(horizon + 1)
+          if (length(idx) == 0) return (horizon + 1)
           t_ruin_idx <- idx[1]
-          if (t_ruin_idx == 1) return(0)
+          if (t_ruin_idx == 1) return (0)
           w_prev <- p[t_ruin_idx - 1]
           w_curr <- p[t_ruin_idx]
           frac <- w_prev / (w_prev - w_curr)
           return((t_ruin_idx - 2) + frac)
         })
         return(list(paths = paths, ruin = ruin_indices))
-      } 
+      }
       
       if (target == "var") {
         t_x_idx <- min(round(input$life_exp), horizon)
@@ -88,15 +81,15 @@ server <- function(input, output) {
       } else {
         ruin_indices <- apply(paths, 1, function(p) {
           idx <- which(p <= 0)
-          if (length(idx) == 0) return(horizon + 1)
+          if (length(idx) == 0) return (horizon + 1)
           t_ruin_idx <- idx[1]
-          if (t_ruin_idx == 1) return(0)
+          if (t_ruin_idx == 1) return (0)
           w_prev <- p[t_ruin_idx - 1]
           w_curr <- p[t_ruin_idx]
           frac <- w_prev / (w_prev - w_curr)
           return((t_ruin_idx - 2) + frac)
         })
-        return(quantile(ruin_indices, 0.05) - input$life_exp) 
+        return(quantile(ruin_indices, 0.05) - input$life_exp)
       }
     }
     
@@ -104,25 +97,26 @@ server <- function(input, output) {
     paths <- base_sim$paths
     ruin_indices <- base_sim$ruin
     
-    X10 <- quantile(ruin_indices, 0.10)
-    X5 <- quantile(ruin_indices, 0.05)
-    X1 <- quantile(ruin_indices, 0.01)
+    # Calculate EIOPA Quantiles
+    X75 <- quantile(ruin_indices, 0.75) # Good Weather
+    X10 <- quantile(ruin_indices, 0.10) # Bad Weather
+    X5 <- quantile(ruin_indices, 0.05)  # Severe Bad Weather
+    X1 <- quantile(ruin_indices, 0.01)  # Extreme Tail Risk
     
+    buffer_75 <- X75 - input$life_exp
     buffer_10 <- X10 - input$life_exp
     buffer_5 <- X5 - input$life_exp
     buffer_1 <- X1 - input$life_exp
     
     t_x_idx <- min(round(input$life_exp), horizon)
     wealth_at_Tx <- paths[, t_x_idx + 1]
-    
     VaR_05 <- quantile(wealth_at_Tx, 0.05)
     ES_05 <- mean(wealth_at_Tx[wealth_at_Tx <= VaR_05])
     
     discount_factors <- (1 + rf_rate)^-(1:t_x_idx)
     S_needs_det <- needs_0_ann * (1 + input$pi_needs)^(1:t_x_idx)
     PV_needs <- sum(S_needs_det * discount_factors)
-    
-    df_Tx <- (1 + rf_rate)^-t_x_idx 
+    df_Tx <- (1 + rf_rate)^-t_x_idx
     RSR_05 <- (PV_needs + (VaR_05 * df_Tx)) / PV_needs
     
     Y <- 0
@@ -134,18 +128,18 @@ server <- function(input, output) {
       if (!is.na(opt_w_res)) {
         Y <- (wishes_0_ann - opt_w_res) / 12
       } else {
-        Y <- wishes_0_ann / 12 
+        Y <- wishes_0_ann / 12
       }
       
       solve_w <- function(test_cap) eval_sim(test_cap, wishes_0_ann, target = "var")
-      opt_W_res <- tryCatch(uniroot(solve_w, interval = c(input$W0, input$W0 * 5), extendInt = "yes")$root, error=function(e) NA)
+      opt_W_res <- tryCatch(uniroot(solve_w, interval = c(input$W0, input$W0 * 5), extendInt = "yes")$root, error = function(e) NA)
       if (!is.na(opt_W_res)) W_inj <- opt_W_res - input$W0
     }
     
     list(
-      paths = paths, RSR = RSR_05, VaR = VaR_05, ES = ES_05, 
-      X10 = X10, X5 = X5, X1 = X1, 
-      buffer_10 = buffer_10, buffer_5 = buffer_5, buffer_1 = buffer_1, 
+      paths = paths, RSR = RSR_05, VaR = VaR_05, ES = ES_05,
+      X75 = X75, X10 = X10, X5 = X5, X1 = X1,
+      buffer_75 = buffer_75, buffer_10 = buffer_10, buffer_5 = buffer_5, buffer_1 = buffer_1,
       Y = Y, W_inj = W_inj
     )
   })
@@ -153,58 +147,59 @@ server <- function(input, output) {
   output$trajectoryPlot <- renderPlot({
     res <- sim_results()
     
-    path_base <- apply(res$paths, 2, quantile, probs = 0.50)
-    path_10   <- apply(res$paths, 2, quantile, probs = 0.10)
-    path_05   <- apply(res$paths, 2, quantile, probs = 0.05)
-    path_01   <- apply(res$paths, 2, quantile, probs = 0.01)
+    path_75 <- apply(res$paths, 2, quantile, probs=0.75)
+    path_base <- apply(res$paths, 2, quantile, probs=0.50)
+    path_10 <- apply(res$paths, 2, quantile, probs=0.10)
+    path_05 <- apply(res$paths, 2, quantile, probs=0.05)
+    path_01 <- apply(res$paths, 2, quantile, probs=0.01)
     
     age_axis <- 65:(65 + 35)
-    y_max <- max(path_base[1], input$W0) * 1.1
-    y_min <- min(path_01) * 1.05 
     
-    plot(age_axis, path_base, type = "l", col = "darkgray", lwd = 2, lty = 2, 
+    y_max <- max(path_75) * 1.05
+    y_min <- min(path_01) * 1.05
+    
+    plot(age_axis, path_base, type = "l", col = "darkgray", lwd = 2, lty = 2,
          ylim = c(y_min, y_max), xlab = "Retiree Age", ylab = "Portfolio Wealth (€)",
-         main = "Wealth Trajectories Across Market Scenarios")
+         main = "Wealth Trajectories Across EIOPA Scenarios")
     
+    lines(age_axis, path_75, col = "forestgreen", lwd = 2)
     lines(age_axis, path_10, col = "orange", lwd = 2)
     lines(age_axis, path_05, col = "tomato", lwd = 3)
     lines(age_axis, path_01, col = "purple", lwd = 2)
-    
     abline(h = 0, col = "black", lwd = 2)
     
     plot_life_exp <- min(input$life_exp, 35)
     abline(v = 65 + plot_life_exp, col = "blue", lwd = 2, lty = 3)
     
-    polygon(c(age_axis, rev(age_axis)), 
-            c(rep(0, length(age_axis)), rep(y_min, length(age_axis))), 
+    polygon(c(age_axis, rev(age_axis)),
+            c(rep(0, length(age_axis)), rep(y_min, length(age_axis))),
             col = rgb(1, 0, 0, 0.05), border = NA)
     
-    text(65 + plot_life_exp + 0.5, y_max * 0.9, 
-         paste("Life Expectancy (", 65 + input$life_exp, ")", sep=""), 
+    text(65 + plot_life_exp + 0.5, y_max * 0.9,
+         paste("Life Expectancy (", 65 + input$life_exp, ")", sep=""),
          col = "blue", adj = 0, font = 2)
     
-    legend("bottomleft", 
-           legend = c("Base Case", "10% Worst-Case", "5% Worst-Case", "1% Worst-Case"),
-           col = c("darkgray", "orange", "tomato", "purple"), 
-           lwd = c(2, 2, 3, 2), lty = c(2, 1, 1, 1), bg = "white")
+    legend("bottomleft",
+           legend = c("EIOPA Favourable (75%)", "EIOPA Best Estimate (50%)", "EIOPA Unfavourable (10%)", "EIOPA Unfavourable (5%)", "Extreme Tail (1%)"),
+           col = c("forestgreen", "darkgray", "orange", "tomato", "purple"),
+           lwd = c(2,2,2,3,2), lty = c(1,2,1,1,1), bg = "white", cex=0.85)
   })
   
   output$advisoryText <- renderText({
     res <- sim_results()
+    health_score <- res$RSR * 100
     
-    health_score <- res$RSR * 100 
+    future_status <- ifelse(res$VaR < 0,
+                            sprintf("Projected Shortfall of %s", format(round(-res$VaR), big.mark=",")),
+                            sprintf("Projected Surplus of %s", format(round(res$VaR), big.mark=",")))
     
-    future_status <- ifelse(res$VaR < 0, 
-                            sprintf("Projected Shortfall of €%s", format(round(-res$VaR), big.mark=",")), 
-                            sprintf("Projected Surplus of €%s", format(round(res$VaR), big.mark=",")))
-    
-    tail_risk_status <- ifelse(res$ES < 0, 
-                               sprintf("In severe tail events (worst 5%%), this shortfall averages €%s.", format(round(-res$ES), big.mark=",")), 
+    tail_risk_status <- ifelse(res$ES < 0,
+                               sprintf("In severe tail events (worst 5%%), this shortfall averages %s.", format(round(-res$ES), big.mark=",")),
                                "Even in severe worst-case events, your baseline needs remain covered.")
     
     margin_text <- sprintf(
-      "Safety Margins (Years vs. Life Expectancy):\n  * 10%% Worst-Case (1-in-10): %+.1f years\n  * 5%% Worst-Case (1-in-20): %+.1f years\n  * 1%% Worst-Case (1-in-100): %+.1f years",
-      res$buffer_10, res$buffer_5, res$buffer_1
+      "Safety Margins (Years vs. Life Expectancy): \n * EIOPA Favourable (75%%): %+.1f years\n * EIOPA Unfavourable (10%%): %+.1f years\n * EIOPA Unfavourable (5%%): %+.1f years\n * Extreme Tail (1%%): %+.1f years",
+      res$buffer_75, res$buffer_10, res$buffer_5, res$buffer_1
     )
     
     client_summary <- sprintf(
@@ -213,19 +208,17 @@ server <- function(input, output) {
     )
     
     if (res$VaR >= 0) {
-      action_text <- "\n--- ADVISOR RECOMMENDATION ---\nSTATUS: ON TRACK.\nYour current spending level is highly sustainable. No adjustments to your lifestyle or portfolio are required at this time."
-      
+      action_text <- "\n--- ADVISOR RECOMMENDATION ---\nSTATUS: ON TRACK. \nYour current spending level is highly sustainable. No adjustments to your lifestyle or portfolio are required at this time."
     } else if (res$buffer_5 >= 0 && res$VaR < 0) {
       action_text <- sprintf(
-        "\n--- ADVISOR RECOMMENDATION ---\nSTATUS: CAUTION.\nYou have enough capital to survive standard market drops, but you are vulnerable to extreme financial shocks.\n\nTo reach a 100%% Health Score, consider:\n(Option A) Reducing discretionary spending by €%s/month.\n(Option B) Keeping an additional cash reserve of €%s.",
-        format(round(res$Y, 2), nsmall = 2, big.mark = ","), 
+        "\n--- ADVISOR RECOMMENDATION ---\nSTATUS: CAUTION.\nYou have enough capital to survive standard market drops, but you are vulnerable to extreme financial shocks.\n\nTo reach a 100%% Health Score, consider: \n (Option A) Reducing discretionary spending by €%s/month.\n (Option B) Keeping an additional cash reserve of €%s.",
+        format(round(res$Y, 2), nsmall = 2, big.mark = ","),
         format(round(res$W_inj, 2), nsmall = 2, big.mark = ",")
       )
-      
     } else {
       action_text <- sprintf(
-        "\n--- ADVISOR RECOMMENDATION ---\nSTATUS: ACTION REQUIRED.\nIf a severe market downturn occurs, your current withdrawal rate will deplete your portfolio before your life expectancy.\n\nTo secure your retirement today, you have two mathematically sound options:\n(Option A) Reduce your flexible spending by €%s per month.\n(Option B) Inject €%s into your investment portfolio today (e.g., downsizing or equity release).",
-        format(round(res$Y, 2), nsmall = 2, big.mark = ","), 
+        "\n--- ADVISOR RECOMMENDATION ---\nSTATUS: ACTION REQUIRED. \nIf a severe market downturn occurs, your current withdrawal rate will deplete your portfolio before your life expectancy.\n\nTo secure your retirement today, you have two mathematically sound options:\n(Option A) Reduce your flexible spending by €%s per month.\n(Option B) Inject €%s into your investment portfolio today (e.g., downsizing or equity release).",
+        format(round(res$Y, 2), nsmall = 2, big.mark = ","),
         format(round(res$W_inj, 2), nsmall = 2, big.mark = ",")
       )
     }
@@ -238,9 +231,9 @@ server <- function(input, output) {
     buffer_5 <- res$buffer_5
     
     par(mar = c(2, 2, 4, 2), bg = "#FAFAFA")
-    plot(0, 0, type = "n", xlim = c(-1.3, 1.3), ylim = c(-0.2, 1.2), 
+    plot(0, 0, type = "n", xlim = c(-1.3, 1.3), ylim = c(-0.2, 1.2),
          axes = FALSE, xlab = "", ylab = "", asp = 1,
-         main = "Retirement Runway Monitor\n(Time-to-Ruin Buffer)", 
+         main = "Retirement Runway Monitor\n (Time-to-Ruin Buffer)",
          col.main = "#2C3E50", cex.main = 1.3)
     
     col_red <- "#E74C3C"; col_yel <- "#F1C40F"; col_grn <- "#2ECC71"; col_needle <- "#34495E"
@@ -272,14 +265,12 @@ server <- function(input, output) {
     
     text(0, 0.45, sprintf("%+.1f Years", buffer_5), cex = 2, font = 2, col = "#2C3E50")
     
-    if (res$VaR >= 0) { 
-      status_text <- "SAFE"; status_col <- col_grn 
-    } 
-    else if (buffer_5 >= 0 && res$VaR < 0) { 
-      status_text <- "CAUTION"; status_col <- "#D4AC0D" 
-    } 
-    else { 
-      status_text <- "CRITICAL"; status_col <- col_red 
+    if (res$VaR >= 0) {
+      status_text <- "SAFE"; status_col <- col_grn
+    } else if (buffer_5 >= 0 && res$VaR < 0) {
+      status_text <- "CAUTION"; status_col <- "#D4AC0D"
+    } else {
+      status_text <- "CRITICAL"; status_col <- col_red
     }
     
     text(0, 0.28, status_text, cex = 1.2, font = 2, col = status_col)
