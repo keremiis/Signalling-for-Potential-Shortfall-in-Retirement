@@ -15,7 +15,18 @@ ui <- fluidPage (
       sliderInput("sig_ret", "Return Volatility", min = 0, max = 0.20, value = 0.12, step = 0.01),
       sliderInput("pi_needs", "Needs Inflation", min = 0, max = 0.10, value = 0.0274, step = 0.001),
       sliderInput("pi_wishes", "Wishes Inflation", min = 0, max = 0.10, value = 0.0303, step = 0.001),
-      sliderInput("sig_inf", "Inflation Volatility", min = 0, max = 0.05, value = 0.01, step = 0.005)
+      sliderInput("sig_inf", "Inflation Volatility", min = 0, max = 0.05, value = 0.01, step = 0.005),
+      h4("Behavioral Assumptions"),
+      hr(),
+      wellPanel(
+        style = "background-color: #F8F9F9; border-left: 4px solid #2C3E50;",
+        h4("Behavioral Spending Curve", style = "margin-top: 0px;"),
+        helpText("Simulates real-world retirement spending habits rather than flat static withdrawals."),
+        radioButtons("spend_behavior", label = NULL,
+                     choices = list("Empirical (30% Early Surge + 1% Decline)" = "empirical",
+                                    "Traditional (Static Real Withdrawal)" = "static"),
+                     selected = "empirical")
+      )
     ),
     mainPanel (
       fluidRow(
@@ -48,6 +59,20 @@ server <- function(input, output) {
     Inf_n_mat <- matrix(rnorm(N * horizon, input$pi_needs, input$sig_inf), nrow = N)
     Inf_w_mat <- matrix(rnorm(N * horizon, input$pi_wishes, input$sig_inf), nrow = N)
     
+    # Pre-calculate the behavioral multiplier based on UI toggle
+    wishes_multiplier <- numeric(horizon)
+    for(i in 1:horizon) {
+      if (input$spend_behavior == "empirical") {
+        if(i <= 3) {
+          wishes_multiplier[i] <- 1.30 # 30% surge for first 3 years
+        } else {
+          wishes_multiplier[i] <- (1 - 0.01)^(i - 3) # 1% steady decline thereafter
+        }
+      } else {
+        wishes_multiplier[i] <- 1 # Static baseline
+      }
+    }
+    
     eval_sim <- function(W, wishes_ann, return_paths = FALSE, target = "buffer") {
       paths <- matrix(0, nrow = N, ncol = horizon + 1)
       paths[, 1] <- W
@@ -57,8 +82,11 @@ server <- function(input, output) {
       for (t in 1:horizon) {
         curr_n <- curr_n * (1 + Inf_n_mat[, t])
         curr_w <- curr_w * (1 + Inf_w_mat[, t])
+        
         growth <- ifelse(paths[, t] > 0, paths[, t] * R_mat[, t], 0)
-        paths[, t + 1] <- paths[, t] + growth - (curr_n + curr_w)
+        
+        actual_wishes <- curr_w * wishes_multiplier[t]
+        paths[, t + 1] <- paths[, t] + growth - (curr_n + actual_wishes)
       }
       
       if (return_paths) {
