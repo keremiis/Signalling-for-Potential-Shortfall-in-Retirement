@@ -47,8 +47,8 @@ ui <- fluidPage (
 server <- function(input, output) {
   
   sim_results <- reactive({
-    set.seed(2026)
-    N <- 2000
+    set.seed(42)
+    N <- 10000
     horizon <- 35
     rf_rate <- 0.02
     needs_0_ann <- input$needs_0_mo * 12
@@ -59,17 +59,16 @@ server <- function(input, output) {
     Inf_n_mat <- matrix(rnorm(N * horizon, input$pi_needs, input$sig_inf), nrow = N)
     Inf_w_mat <- matrix(rnorm(N * horizon, input$pi_wishes, input$sig_inf), nrow = N)
     
-    # Pre-calculate the behavioral multiplier based on UI toggle
     wishes_multiplier <- numeric(horizon)
     for(i in 1:horizon) {
       if (input$spend_behavior == "empirical") {
         if(i <= 3) {
-          wishes_multiplier[i] <- 1.30 # 30% surge for first 3 years
+          wishes_multiplier[i] <- 1.30
         } else {
-          wishes_multiplier[i] <- (1 - 0.01)^(i - 3) # 1% steady decline thereafter
+          wishes_multiplier[i] <- (1 - 0.01)^(i - 3)
         }
       } else {
-        wishes_multiplier[i] <- 1 # Static baseline
+        wishes_multiplier[i] <- 1
       }
     }
     
@@ -125,11 +124,10 @@ server <- function(input, output) {
     paths <- base_sim$paths
     ruin_indices <- base_sim$ruin
     
-    # Calculate EIOPA Quantiles
-    X75 <- quantile(ruin_indices, 0.75) # Good Weather
-    X10 <- quantile(ruin_indices, 0.10) # Bad Weather
-    X5 <- quantile(ruin_indices, 0.05)  # Severe Bad Weather
-    X1 <- quantile(ruin_indices, 0.01)  # Extreme Tail Risk
+    X75 <- quantile(ruin_indices, 0.75)
+    X10 <- quantile(ruin_indices, 0.10)
+    X5 <- quantile(ruin_indices, 0.05)
+    X1 <- quantile(ruin_indices, 0.01)
     
     buffer_75 <- X75 - input$life_exp
     buffer_10 <- X10 - input$life_exp
